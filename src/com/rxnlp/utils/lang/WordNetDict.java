@@ -12,18 +12,15 @@ import edu.smu.tspell.wordnet.SynsetType;
 import edu.smu.tspell.wordnet.VerbSynset;
 import edu.smu.tspell.wordnet.WordNetDatabase;
 
-
-
-
 public class WordNetDict {
 	
 	
 	public WordNetDict(String path){
-		System.setProperty("wordnet.database.dir","C:\\Program Files (x86)\\WordNet\\2.1\\dict\\");
+		System.setProperty("wordnet.database.dir","/resources/word-net-dict");
 	}
 	
 	public WordNetDict(){
-		System.setProperty("wordnet.database.dir","C:\\Program Files (x86)\\WordNet\\2.1\\dict\\");
+		System.setProperty("wordnet.database.dir","/resources/word-net-dict");
 	}
 	
 	static WordNetDatabase database = WordNetDatabase.getFileInstance(); 
@@ -39,7 +36,6 @@ public class WordNetDict {
 		wdn.getVerbSynonyms("fell");
 		
 		System.out.println(wdn.getNounSynonyms("phone"));
-
 
 	}
 	

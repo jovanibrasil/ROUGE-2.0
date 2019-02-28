@@ -32,8 +32,7 @@ import edu.stanford.nlp.tagger.maxent.MaxentTagger;
 
 /**
  * 
- * @author Kavita Ganesan
- * www.rxnlp.com
+ * @author Kavita Ganesan www.rxnlp.com
  *
  */
 public class ROUGECalculator {
@@ -59,12 +58,12 @@ public class ROUGECalculator {
 		double f = 0;
 		int count = 0;
 		String name;
-		
-		public void resetROUGE(){
-			precision=0;
-			recall=0;
-			count=0;
-			f=0;
+
+		public void resetROUGE() {
+			precision = 0;
+			recall = 0;
+			count = 0;
+			f = 0;
 		}
 
 	}
@@ -87,19 +86,25 @@ public class ROUGECalculator {
 		}
 
 	}
-	
-	
 
 	public static void main(String args[]) {
-
 		ROUGECalculator rc = new ROUGECalculator();
-		rc.start(args);
+		rc.start();
 	}
 
-	private void start(String[] args) {
+	public static HashMap<String, HashMap<String, Object>> computeRouge(ROUGESettings settings) {
+		ROUGECalculator rc = new ROUGECalculator();
+		return rc.start(settings);
+	}
 
-		settings = new ROUGESettings();
+	private HashMap<String, HashMap<String, Object>> start() {
+		ROUGESettings settings = new ROUGESettings();
 		SettingsUtil.loadProps(settings);
+		return start(settings);
+	}
+
+	private HashMap<String, HashMap<String, Object>> start(ROUGESettings settings) {
+		this.settings = settings;
 
 		if (settings.REMOVE_STOP_WORDS) {
 			stopHandler = new StopWordsHandler(settings.STOP_WORDS_FILE);
@@ -127,8 +132,6 @@ public class ROUGECalculator {
 			logger.info("Loaded...POS tagger.");
 		}
 
-		
-
 		if (settings.OUTPUT_TYPE.equalsIgnoreCase("file")) {
 			try {
 
@@ -149,17 +152,39 @@ public class ROUGECalculator {
 				resultsWriter.newLine();
 
 			} catch (IOException e) {
-				logger.error("There was a problem creating or writing to the results file. Make sure the file is not in use");
+				logger.error(
+						"There was a problem creating or writing to the results file. Make sure the file is not in use");
 				logger.error(e.getMessage());
 				System.exit(-1);
 			}
 		}
 
+		HashMap<String, TaskFile> hmEvalTasks = new HashMap<String, TaskFile>();
+
+		// load a specific reference and generated files
+		if (settings.SINGLE_EVALUATION) {
+			logger.info("Single evaluation ...");
+			try {
+				// logger.info(settings.REFERENCE_FILE_DIR);
+				// logger.info(settings.GENERATED_FILE_DIR);
+				Path referenceFile = Paths.get(settings.REFERENCE_FILE_DIR);
+				Path generatedFile = Paths.get(settings.GENERATED_FILE_DIR);
+				List<Path> refFiles = new ArrayList<Path>(Arrays.asList(referenceFile));
+				List<Path> sysFiles = new ArrayList<Path>(Arrays.asList(generatedFile));
+				initTask(referenceFile, generatedFile, hmEvalTasks);
+				// initTasks(refFiles, sysFiles, hmEvalTasks);
+				return evaluate(hmEvalTasks);
+
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+			return null;
+		}
+
+		// load all files from reference path and system path
 		String projectDir = settings.PROJ_DIR;
 		String references = projectDir + "/reference";
 		String system = projectDir + "/system";
-
-		HashMap<String, TaskFile> hmEvalTasks = new HashMap<String, TaskFile>();
 
 		Path refPath = Paths.get(references);
 		Path sysPath = Paths.get(system);
@@ -169,7 +194,7 @@ public class ROUGECalculator {
 				List<Path> refFiles = Files.list(refPath).collect(Collectors.toList());
 				List<Path> sysFiles = Files.list(sysPath).collect(Collectors.toList());
 				initTasks(refFiles, sysFiles, hmEvalTasks);
-				evaluate(hmEvalTasks);
+				return evaluate(hmEvalTasks);
 			} else {
 				logger.error("A valid 'references' and 'system' folder not found..Check rouge.properties file.");
 				logger.error("\nYou need to have a valid 'references' and 'system' folder under " + projectDir
@@ -184,26 +209,30 @@ public class ROUGECalculator {
 			e.printStackTrace();
 			System.exit(-1);
 		}
+		return null;
 	}
 
-	private void evaluate(HashMap<String, TaskFile> hmEvalTasks) {
+	private HashMap<String, HashMap<String, Object>> evaluate(HashMap<String, TaskFile> hmEvalTasks) {
 
 		Set<String> tasks = hmEvalTasks.keySet();
 		StringBuffer b = new StringBuffer();
-		List<String> resultList=new ArrayList<String>();
-		
-			for (String task : tasks) {
+		List<String> resultList = new ArrayList<String>();
 
-				TaskFile t = hmEvalTasks.get(task);
-				HashMap<Path, Result> systems = t.systemFiles;
-				Set<Path> sysKeys = systems.keySet();
-			
+		HashMap<String, HashMap<String, Object>> result = new HashMap<>();
+
+		for (String task : tasks) {
+
+			TaskFile t = hmEvalTasks.get(task);
+			HashMap<Path, Result> systems = t.systemFiles;
+			Set<Path> sysKeys = systems.keySet();
+
 			for (String ngram : settings.NGRAM) {
-				
-				logger.info("Working on "+task+" ngram="+ngram);
-				
+
+				logger.info("Working on " + task + " ngram=" + ngram);
 
 				for (Path system : sysKeys) {
+
+					HashMap<String, Object> res = new HashMap<String, Object>();
 
 					// get all sentences from the system file
 					List<String> systemSents = getSystemSents(system);
@@ -211,55 +240,66 @@ public class ROUGECalculator {
 					// the result object for sys file
 					Result r = systems.get(system);
 					computeRouge(r, ngram, systemSents, t.referenceFiles);
-					String str = getROUGEName(settings,ngram);
+					String str = getROUGEName(settings, ngram);
 
 					// Print results to console
-					String resultStr=str + "\t" + t.taskName.toUpperCase() + "\t" + r.name.toUpperCase()
+					String resultStr = str + "\t" + t.taskName.toUpperCase() + "\t" + r.name.toUpperCase()
 							+ "\tAverage_R:" + df.format(r.recall) + "\tAverage_P:" + df.format(r.precision)
 							+ "\tAverage_F:" + df.format(r.f) + "\tNum Reference Summaries:" + r.count;
 					resultList.add(resultStr);
+
+					res.put("result_title", str);
+					res.put("ngram", ngram);
+					res.put("task_name", t.taskName);
+					res.put("result_name", r.name);
+					res.put("average_p", r.precision);
+					res.put("average_r", r.recall);
+					res.put("average_f", r.f);
+					res.put("reference_summary_count", r.count);
+
+					result.put(str + " " + t.taskName, res);
+
 					// Write to file if specified by settings
 					if (resultsWriter != null) {
 						try {
 							b.delete(0, b.length());
-							b.append(str).append(",")
-									.append(t.taskName.toUpperCase()).append(",")
+							b.append(str).append(",").append(t.taskName.toUpperCase()).append(",")
 									.append(r.name.toUpperCase()).append(",").append(df.format(r.recall)).append(",")
 									.append(df.format(r.precision)).append(",").append(df.format(r.f)).append(",")
 									.append(r.count);
 
 							resultsWriter.write(b.toString());
 							resultsWriter.newLine();
-							
+
 						} catch (IOException e) {
 							logger.error(e.getMessage());
 						}
-
 					}
 				}
+
 				try {
 					resultsWriter.newLine();
 					resultList.add("\n");
 				} catch (IOException e) {
 					logger.error(e.getMessage());
 				}
-			}//end of task
-			
-			
+			} // end of task
+
 		}
-			
+
 		printResults(resultList);
 		cleanUp();
+		return result;
 	}
 
 	private void printResults(List<String> resultList) {
-		System.out.println("\n========Results Summary=======\n");
-		
-		for (String res:resultList){
-			System.out.println(res);
+		logger.info("\n========Results Summary=======\n");
+
+		for (String res : resultList) {
+			logger.info(res);
 		}
-		
-		System.out.println("======Results Summary End======\n");
+
+		logger.info("======Results Summary End======\n");
 	}
 
 	private void cleanUp() {
@@ -267,7 +307,8 @@ public class ROUGECalculator {
 		try {
 			if (resultsWriter != null) {
 				logger.info("Results written to " + settings.RESULTS_FILE);
-				System.out.println("\n\nDone! Find results file in: " + (new File(settings.RESULTS_FILE)).getAbsolutePath());
+				logger.info(
+						"\n\nDone! Find results file in: " + (new File(settings.RESULTS_FILE)).getAbsolutePath());
 				resultsWriter.close();
 			}
 		} catch (IOException e) {
@@ -302,8 +343,7 @@ public class ROUGECalculator {
 		 * try { BufferedReader r=new BufferedReader(new FileReader(system));
 		 * List<String> sentList=new ArrayList<>(); String line="";
 		 * 
-		 * while((line=r.readLine())!=null){ line=cleanSent(line);
-		 * sentList.add(line); }
+		 * while((line=r.readLine())!=null){ line=cleanSent(line); sentList.add(line); }
 		 */
 
 		// read file into stream, try-with-resources
@@ -332,7 +372,24 @@ public class ROUGECalculator {
 		return line;
 	}
 
-	private void computeRouge(String system, List<String> referenceFiles) {
+	private static void initTask(Path referenceFile, Path generatedFile, HashMap<String, TaskFile> hmEvalTasks) {
+
+		// Load generated file
+		String fileName = generatedFile.getFileName().toFile().getName();
+		String[] fileToks = fileName.split("_");
+		// Create a task. A task is an evaluation step.
+		TaskFile theEvalTask = getEvalTask(fileToks[0], hmEvalTasks);
+
+		// Initialize generated file
+		Result r = new ROUGECalculator().new Result();
+		r.name = fileToks[1];
+		theEvalTask.systemFiles.put(generatedFile, r);
+
+		// Initialize reference file
+		fileName = referenceFile.getFileName().toFile().getName();
+		fileToks = fileName.split("_");
+		theEvalTask = getEvalTask(fileToks[0], hmEvalTasks);
+		theEvalTask.referenceFiles.add(referenceFile);
 
 	}
 
@@ -345,7 +402,7 @@ public class ROUGECalculator {
 			String[] fileToks = fileName.split("_");
 
 			if (fileNamingOK(fileToks, fileName)) {
-				TaskFile theEvalTask = getEvalTask(fileToks, hmEvalTasks);
+				TaskFile theEvalTask = getEvalTask(fileToks[0], hmEvalTasks);
 
 				Result r = new ROUGECalculator().new Result();
 				r.name = fileToks[1];
@@ -362,7 +419,7 @@ public class ROUGECalculator {
 			String[] fileToks = fileName.split("_");
 
 			if (fileNamingOK(fileToks, fileName)) {
-				TaskFile theEvalTask = getEvalTask(fileToks, hmEvalTasks);
+				TaskFile theEvalTask = getEvalTask(fileToks[0], hmEvalTasks);
 				theEvalTask.referenceFiles.add(refFile);
 			}
 		}
@@ -377,8 +434,8 @@ public class ROUGECalculator {
 	 * @param hmEvalTasks
 	 * @return
 	 */
-	private static TaskFile getEvalTask(String[] fileToks, HashMap<String, TaskFile> hmEvalTasks) {
-		String taskName = fileToks[0].toLowerCase();
+	private static TaskFile getEvalTask(String fileToks, HashMap<String, TaskFile> hmEvalTasks) {
+		String taskName = fileToks.toLowerCase();
 		TaskFile theEvalTask = hmEvalTasks.get(taskName);
 
 		if (theEvalTask == null) {
@@ -480,7 +537,7 @@ public class ROUGECalculator {
 
 				/** ROUGE topic , POS TAG and set n-gram to 1 */
 				if (settings.ROUGE_TYPE.equals(RougeType.topic) || settings.ROUGE_TYPE.equals(RougeType.topicUniq)) {
-					ngram="1";
+					ngram = "1";
 					getPOSTagged(refSents, true);
 					getPOSTagged(sysSents, true);
 				}
@@ -506,9 +563,9 @@ public class ROUGECalculator {
 				double overlap = 0;
 				double ROUGE = 0;
 
-				Collection<String> hsrefOriginal = getNGramTokens(ngram,refSents);
-				Collection<String> refSummaryTokens = getNGramTokens(ngram,refSents);
-				Collection<String> sysSummaryTokens = getNGramTokens(ngram,sysSents);
+				Collection<String> hsrefOriginal = getNGramTokens(ngram, refSents);
+				Collection<String> refSummaryTokens = getNGramTokens(ngram, refSents);
+				Collection<String> sysSummaryTokens = getNGramTokens(ngram, sysSents);
 
 				HashSet<String> theSynonyms = new HashSet<>();
 
@@ -565,14 +622,12 @@ public class ROUGECalculator {
 						}
 					}
 				}
-				r.count=r.count+1;
-				computePrecisionRecall(r,ngram, overlap, hsrefOriginal, sysSummaryTokens, refSents, sysSents);
-				
-				
+				r.count = r.count + 1;
+				computePrecisionRecall(r, ngram, overlap, hsrefOriginal, sysSummaryTokens, refSents, sysSents);
 
 			} // SENTS FOUND
 		}
-		
+
 		finalizePrecisionRecall(r);
 	}
 
@@ -764,9 +819,8 @@ public class ROUGECalculator {
 
 				String[] daToks = t.split("_");
 
-
 				// IF NOT STOP WORD, KEEP
-				if (daToks.length<1 || !StopWordsHandler.isStop(daToks[0].trim())) {
+				if (daToks.length < 1 || !StopWordsHandler.isStop(daToks[0].trim())) {
 					b.append(t).append(" ");
 				}
 			}
@@ -778,11 +832,11 @@ public class ROUGECalculator {
 	}
 
 	private void printSupportedNgrams() {
-		System.out.println("The following n-gram settings are supported:");
-		System.out.println("ROUGE-N  (e.g. 1,2,3,..)");
-		System.out.println("ROUGE-S  (e.g. S1,S2,S3,..)");
-		System.out.println("ROUGE-SU (e.g. SU1,SU2,SU3,..);");
-		System.out.println("ROUGE-L  (only option: LCS)");
+		logger.info("The following n-gram settings are supported:");
+		logger.info("ROUGE-N  (e.g. 1,2,3,..)");
+		logger.info("ROUGE-S  (e.g. S1,S2,S3,..)");
+		logger.info("ROUGE-SU (e.g. SU1,SU2,SU3,..);");
+		logger.info("ROUGE-L  (only option: LCS)");
 	}
 
 	/**

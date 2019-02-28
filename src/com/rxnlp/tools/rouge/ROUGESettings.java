@@ -60,6 +60,10 @@ public class ROUGESettings {
 
 
 	public boolean USE_STEMMER;
+	
+	public boolean SINGLE_EVALUATION;
+	public String REFERENCE_FILE_DIR;
+	public String GENERATED_FILE_DIR;
 		
 
 }
